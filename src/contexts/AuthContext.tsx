@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
-import { Branch } from '../types';
+// src/contexts/AuthContext.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { createContext, ReactNode, useEffect, useState } from 'react';
+import { API_URL, fetchJson, getAuthHeader, getStoredToken, setStoredToken } from '../lib/api';
+import type { Branch, User } from '../types/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -11,63 +12,86 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [branch, setBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadBranch(session.user.user_metadata.branch_id);
-      }
+  async function loadMe(token?: string | null) {
+    const t = token ?? getStoredToken();
+    if (!t) {
+      setUser(null);
+      setBranch(null);
       setLoading(false);
-    });
+      return;
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          await loadBranch(session.user.user_metadata.branch_id);
-        } else {
-          setBranch(null);
-        }
-      })();
-    });
+    try {
+      const data = await fetchJson<User>(`${API_URL}/me`, {
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      });
 
-    return () => subscription.unsubscribe();
+      setUser(data ?? null);
+      setBranch((data as any)?.branch ?? null);
+    } catch (err) {
+      console.warn('Failed to load /me', err);
+      setUser(null);
+      setBranch(null);
+      setStoredToken(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      await loadMe();
+      setLoading(false);
+    })();
   }, []);
 
-  const loadBranch = async (branchId: string) => {
-    if (!branchId) return;
+  const signIn = async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const payload = { email, password };
+      const res = await fetchJson<{ user: User; token: string }>(`${API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    const { data, error } = await supabase
-      .from('branches')
-      .select('*')
-      .eq('id', branchId)
-      .maybeSingle();
+      const token = res.token ?? (res as any).access_token ?? null;
+      const userObj = res.user ?? (res as any);
 
-    if (data && !error) {
-      setBranch(data);
+      if (!token) throw new Error('No token received from server');
+
+      setStoredToken(token);
+      setUser(userObj ?? null);
+      setBranch((userObj as any)?.branch ?? null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) throw error;
-  };
-
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    setBranch(null);
+    setLoading(true);
+    try {
+      // call logout endpoint (protected)
+      await fetchJson(`${API_URL}/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      });
+    } catch (err) {
+      console.warn('Logout error', err);
+    } finally {
+      setStoredToken(null);
+      setUser(null);
+      setBranch(null);
+      setLoading(false);
+    }
   };
 
   return (
@@ -75,12 +99,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

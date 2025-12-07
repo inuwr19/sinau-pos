@@ -1,4 +1,5 @@
-import { Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
+// src/components/Cart.tsx
+import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
 import { CartItem } from '../types';
 
 interface CartProps {
@@ -20,13 +21,12 @@ export default function Cart({
   discount,
   total,
 }: CartProps) {
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('id-ID', {
+  const formatPrice = (price: number) =>
+    new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0,
     }).format(price);
-  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-4">
@@ -40,18 +40,11 @@ export default function Cart({
 
       <div className="space-y-3 max-h-96 overflow-y-auto mb-4">
         {cart.map((cartItem) => (
-          <div
-            key={cartItem.item.id}
-            className="border border-gray-200 rounded-lg p-3 space-y-2"
-          >
+          <div key={cartItem.item.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <h3 className="font-medium text-gray-800 text-sm">
-                  {cartItem.item.name}
-                </h3>
-                <p className="text-xs text-gray-500">
-                  {formatPrice(cartItem.item.price)}
-                </p>
+                <h3 className="font-medium text-gray-800 text-sm">{cartItem.item.name}</h3>
+                <p className="text-xs text-gray-500">{formatPrice(cartItem.item.price)}</p>
               </div>
               <button
                 onClick={() => onRemoveItem(cartItem.item.id)}
@@ -64,20 +57,14 @@ export default function Cart({
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() =>
-                    onUpdateItem(cartItem.item.id, cartItem.quantity - 1)
-                  }
+                  onClick={() => onUpdateItem(cartItem.item.id, cartItem.quantity - 1)}
                   className="bg-gray-100 hover:bg-gray-200 p-1 rounded transition-colors"
                 >
                   <Minus className="w-4 h-4 text-gray-700" />
                 </button>
-                <span className="w-8 text-center font-medium text-sm">
-                  {cartItem.quantity}
-                </span>
+                <span className="w-8 text-center font-medium text-sm">{cartItem.quantity}</span>
                 <button
-                  onClick={() =>
-                    onUpdateItem(cartItem.item.id, cartItem.quantity + 1)
-                  }
+                  onClick={() => onUpdateItem(cartItem.item.id, cartItem.quantity + 1)}
                   className="bg-gray-100 hover:bg-gray-200 p-1 rounded transition-colors"
                 >
                   <Plus className="w-4 h-4 text-gray-700" />
@@ -92,9 +79,7 @@ export default function Cart({
               type="text"
               placeholder="Catatan (opsional)"
               value={cartItem.notes}
-              onChange={(e) =>
-                onUpdateItem(cartItem.item.id, cartItem.quantity, e.target.value)
-              }
+              onChange={(e) => onUpdateItem(cartItem.item.id, cartItem.quantity, e.target.value)}
               className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-amber-500 focus:border-transparent outline-none"
             />
           </div>

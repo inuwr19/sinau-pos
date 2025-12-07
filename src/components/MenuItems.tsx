@@ -1,4 +1,5 @@
-import { Plus, Coffee } from 'lucide-react';
+// src/components/MenuItems.tsx
+import { Coffee, Plus } from 'lucide-react';
 import { Item } from '../types';
 
 interface MenuItemsProps {
@@ -7,13 +8,12 @@ interface MenuItemsProps {
 }
 
 export default function MenuItems({ items, onAddToCart }: MenuItemsProps) {
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('id-ID', {
+  const formatPrice = (price: number) =>
+    new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0,
     }).format(price);
-  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-4">
@@ -24,23 +24,21 @@ export default function MenuItems({ items, onAddToCart }: MenuItemsProps) {
             className="group border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-all duration-200 hover:border-amber-300"
           >
             <div className="aspect-square bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
-              <Coffee className="w-16 h-16 text-amber-600 opacity-50" />
+              {item.image_url ? (
+                <img src={item.image_url} alt={item.name} className="object-cover w-full h-full" />
+              ) : (
+                <Coffee className="w-16 h-16 text-amber-600 opacity-50" />
+              )}
             </div>
 
             <div className="p-3 space-y-2">
               <div>
-                <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">
-                  {item.name}
-                </h3>
-                <p className="text-xs text-gray-500 line-clamp-2">
-                  {item.description}
-                </p>
+                <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">{item.name}</h3>
+                <p className="text-xs text-gray-500 line-clamp-2">{item.description}</p>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-amber-600">
-                  {formatPrice(item.price)}
-                </span>
+                <span className="text-sm font-bold text-amber-600">{formatPrice(item.price)}</span>
                 <button
                   onClick={() => onAddToCart(item)}
                   className="bg-amber-500 text-white p-2 rounded-lg hover:bg-amber-600 transition-colors"

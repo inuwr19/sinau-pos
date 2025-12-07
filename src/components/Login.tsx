@@ -1,25 +1,28 @@
-import { useState } from 'react';
+// src/components/Login.tsx
 import { Coffee } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 
-export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+export default function Login(): JSX.Element {
   const { signIn } = useAuth();
+
+  const [email, setEmail] = useState('cashier.pusat@test.com');
+  const [password, setPassword] = useState('password');
+  const [error, setError] = useState('');
+  const [loadingLocal, setLoadingLocal] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setLoadingLocal(true);
 
     try {
-      await signIn(email, password);
+      await signIn(email.trim(), password);
     } catch (err) {
-      setError('Email atau password salah');
+      console.error(err);
+      setError((err as Error)?.message ?? 'Email atau password salah');
     } finally {
-      setLoading(false);
+      setLoadingLocal(false);
     }
   };
 
@@ -76,16 +79,14 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loadingLocal}
               className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white py-3 rounded-lg font-medium shadow-lg hover:shadow-xl hover:from-amber-600 hover:to-orange-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Memproses...' : 'Masuk'}
+              {loadingLocal ? 'Memproses...' : 'Masuk'}
             </button>
           </form>
 
-          <div className="text-center text-sm text-gray-500">
-            Masuk dengan akun cabang Anda
-          </div>
+          <div className="text-center text-sm text-gray-500">Masuk dengan akun cabang Anda</div>
         </div>
       </div>
     </div>

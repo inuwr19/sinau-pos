@@ -1,8 +1,9 @@
+// src/components/PaymentModal.tsx
+import { CheckCircle2, CreditCard, QrCode, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
-import { X, CreditCard, Wallet, QrCode, CheckCircle2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { CartItem, Member } from '../types';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
+import { API_URL, fetchJson, getAuthHeader } from '../lib/api';
+import type { CartItem, Member } from '../types';
 
 interface PaymentModalProps {
   cart: CartItem[];
@@ -15,6 +16,29 @@ interface PaymentModalProps {
 }
 
 type PaymentMethod = 'cash' | 'card' | 'qris';
+
+type OrderItemPayload = {
+  menu_item_id: number | string;
+  qty: number;
+  notes?: string | null;
+};
+
+type OrderPayload = {
+  items: OrderItemPayload[];
+  member_phone?: string | null;
+  payment_method?: PaymentMethod;
+  cash_received?: number | null;
+  // optional fields to help backend/debugging
+  branch_id?: number | null;
+  created_by?: number | null;
+};
+
+type OrderResponse = {
+  id?: number;
+  order_number?: string;
+  // other fields backend may return
+  [k: string]: unknown;
+};
 
 export default function PaymentModal({
   cart,
@@ -31,86 +55,68 @@ export default function PaymentModal({
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('id-ID', {
+  const formatPrice = (price: number) =>
+    new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0,
     }).format(price);
-  };
 
   const change = cashAmount ? Math.max(0, parseFloat(cashAmount) - total) : 0;
 
   const handlePayment = async () => {
     if (paymentMethod === 'cash' && (!cashAmount || parseFloat(cashAmount) < total)) {
+      alert('Jumlah tunai kurang dari total.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const orderNumber = `ORD-${Date.now()}`;
-
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert([
-          {
-            branch_id: branch?.id,
-            member_id: member?.id || null,
-            order_number: orderNumber,
-            subtotal,
-            discount,
-            total,
-            status: 'completed',
-            created_by: user?.id,
-          },
-        ])
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      const orderItems = cart.map((ci) => ({
-        order_id: order.id,
-        item_id: ci.item.id,
-        quantity: ci.quantity,
-        price: ci.item.price,
-        subtotal: ci.item.price * ci.quantity,
-        notes: ci.notes,
+      // Build items payload expected by backend
+      const itemsPayload: OrderItemPayload[] = cart.map((ci) => ({
+        menu_item_id: ci.item.id,
+        qty: ci.quantity,
+        notes: ci.notes ?? null,
       }));
 
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
+      const payload: OrderPayload = {
+        items: itemsPayload,
+        member_phone: member?.phone ?? null,
+      };
 
-      if (itemsError) throw itemsError;
+      if (paymentMethod) payload.payment_method = paymentMethod;
+      if (paymentMethod === 'cash') payload.cash_received = Number(cashAmount || 0);
 
-      const { error: paymentError } = await supabase.from('payments').insert([
-        {
-          order_id: order.id,
-          payment_method: paymentMethod,
-          amount: paymentMethod === 'cash' ? parseFloat(cashAmount) : total,
-        },
-      ]);
+      // include branch/user info to avoid eslint unused and help backend if desired
+      payload.branch_id = branch?.id ?? null;
+      payload.created_by = user?.id ?? null;
 
-      if (paymentError) throw paymentError;
+      // send to backend; backend will handle order creation, payment recording, and points awarding
+      const order = await fetchJson<OrderResponse>(`${API_URL}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify(payload),
+      });
 
-      if (member) {
-        const earnedPoints = Math.floor(total / 10000);
-        await supabase
-          .from('members')
-          .update({ points: member.points + earnedPoints })
-          .eq('id', member.id);
-      }
+      // use order info for logging / show to user if needed
+      console.log('Order created', order?.order_number ?? order?.id ?? order);
 
+      // If you integrate Midtrans: your backend should return a snap/token here.
+      // Example flow:
+      // 1) frontend requests POST /api/payments/midtrans (or your /orders returns midtrans token)
+      // 2) backend returns `snap_token` -> frontend call Midtrans Snap JS to display payment modal
+      // 3) backend receives webhook from Midtrans and updates order/payment statuses
+      //
+      // For now, we treat it as immediate success (cash/card simulated).
       setSuccess(true);
       setTimeout(() => {
         onSuccess();
         onClose();
-      }, 2000);
-    } catch (error) {
-      console.error('Payment error:', error);
-      alert('Terjadi kesalahan saat memproses pembayaran');
+      }, 1200);
+    } catch (err) {
+      console.error('Payment error:', err);
+      alert((err as Error)?.message ?? 'Terjadi kesalahan saat memproses pembayaran');
     } finally {
       setLoading(false);
     }
@@ -131,9 +137,7 @@ export default function PaymentModal({
               <CheckCircle2 className="w-16 h-16 text-green-600" />
             </div>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">
-            Pembayaran Berhasil!
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Pembayaran Berhasil!</h2>
           <p className="text-gray-600">Terima kasih atas transaksi Anda</p>
         </div>
       </div>
@@ -145,10 +149,7 @@ export default function PaymentModal({
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-800">Konfirmasi Pembayaran</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -162,9 +163,7 @@ export default function PaymentModal({
             {discount > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-green-600">Diskon Member</span>
-                <span className="font-medium text-green-600">
-                  -{formatPrice(discount)}
-                </span>
+                <span className="font-medium text-green-600">-{formatPrice(discount)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
@@ -174,15 +173,14 @@ export default function PaymentModal({
           </div>
 
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-gray-700">
-              Metode Pembayaran
-            </label>
+            <label className="block text-sm font-medium text-gray-700">Metode Pembayaran</label>
             <div className="grid grid-cols-3 gap-3">
               {paymentMethods.map((method) => {
                 const Icon = method.icon;
                 return (
                   <button
                     key={method.id}
+                    type="button"
                     onClick={() => setPaymentMethod(method.id)}
                     className={`p-4 rounded-lg border-2 transition-all ${
                       paymentMethod === method.id
@@ -192,16 +190,12 @@ export default function PaymentModal({
                   >
                     <Icon
                       className={`w-6 h-6 mx-auto mb-2 ${
-                        paymentMethod === method.id
-                          ? 'text-amber-600'
-                          : 'text-gray-400'
+                        paymentMethod === method.id ? 'text-amber-600' : 'text-gray-400'
                       }`}
                     />
                     <p
                       className={`text-xs font-medium ${
-                        paymentMethod === method.id
-                          ? 'text-amber-600'
-                          : 'text-gray-600'
+                        paymentMethod === method.id ? 'text-amber-600' : 'text-gray-600'
                       }`}
                     >
                       {method.name}
@@ -214,9 +208,7 @@ export default function PaymentModal({
 
           {paymentMethod === 'cash' && (
             <div className="space-y-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Jumlah Tunai
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Jumlah Tunai</label>
               <input
                 type="number"
                 value={cashAmount}
@@ -228,9 +220,7 @@ export default function PaymentModal({
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-700">Kembalian</span>
-                    <span className="font-bold text-green-600">
-                      {formatPrice(change)}
-                    </span>
+                    <span className="font-bold text-green-600">{formatPrice(change)}</span>
                   </div>
                 </div>
               )}
@@ -242,9 +232,7 @@ export default function PaymentModal({
               <div className="bg-white p-4 inline-block rounded-lg mb-3">
                 <QrCode className="w-32 h-32 text-gray-400" />
               </div>
-              <p className="text-sm text-gray-600">
-                Scan QR code untuk membayar
-              </p>
+              <p className="text-sm text-gray-600">Scan QR code untuk membayar</p>
             </div>
           )}
 
@@ -252,8 +240,7 @@ export default function PaymentModal({
             onClick={handlePayment}
             disabled={
               loading ||
-              (paymentMethod === 'cash' &&
-                (!cashAmount || parseFloat(cashAmount) < total))
+              (paymentMethod === 'cash' && (!cashAmount || parseFloat(cashAmount) < total))
             }
             className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white py-3 rounded-lg font-medium shadow-lg hover:shadow-xl hover:from-amber-600 hover:to-orange-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >

@@ -1,6 +1,7 @@
+// src/components/MemberSearch.tsx
+import { Award, Search, UserPlus, X } from 'lucide-react';
 import { useState } from 'react';
-import { Search, X, UserPlus, Award } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { API_URL, fetchJson, getAuthHeader } from '../lib/api';
 import { Member } from '../types';
 
 interface MemberSearchProps {
@@ -8,10 +9,7 @@ interface MemberSearchProps {
   onSelectMember: (member: Member | null) => void;
 }
 
-export default function MemberSearch({
-  selectedMember,
-  onSelectMember,
-}: MemberSearchProps) {
+export default function MemberSearch({ selectedMember, onSelectMember }: MemberSearchProps) {
   const [phone, setPhone] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [newMember, setNewMember] = useState({ name: '', phone: '', email: '' });
@@ -22,39 +20,55 @@ export default function MemberSearch({
     if (!phone.trim()) return;
 
     setSearching(true);
-    const { data, error } = await supabase
-      .from('members')
-      .select('*')
-      .eq('phone', phone)
-      .maybeSingle();
+    try {
+      // backend returns 204 (null) if not found
+      const data = await fetchJson<Member | null>(
+        `${API_URL}/members/search?phone=${encodeURIComponent(phone)}`,
+        {
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
 
-    if (data && !error) {
-      onSelectMember(data);
-      setPhone('');
-    } else {
+      if (data) {
+        onSelectMember(data);
+        setPhone('');
+      } else {
+        setNewMember({ ...newMember, phone });
+        setShowForm(true);
+      }
+    } catch (err) {
+      // fetchJson will throw on non-ok; treat as not found
+      console.warn('Member search error', err);
       setNewMember({ ...newMember, phone });
       setShowForm(true);
+    } finally {
+      setSearching(false);
     }
-    setSearching(false);
   };
 
   const handleCreateMember = async () => {
     if (!newMember.name || !newMember.phone) return;
 
     setLoading(true);
-    const { data, error } = await supabase
-      .from('members')
-      .insert([newMember])
-      .select()
-      .single();
+    try {
+      const data = await fetchJson<Member>(`${API_URL}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify(newMember),
+      });
 
-    if (data && !error) {
-      onSelectMember(data);
-      setShowForm(false);
-      setNewMember({ name: '', phone: '', email: '' });
-      setPhone('');
+      if (data) {
+        onSelectMember(data);
+        setShowForm(false);
+        setNewMember({ name: '', phone: '', email: '' });
+        setPhone('');
+      }
+    } catch (err) {
+      console.error('Create member error', err);
+      alert('Gagal menambah member');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   if (selectedMember) {
@@ -65,9 +79,7 @@ export default function MemberSearch({
             <div className="flex items-center space-x-2">
               <Award className="w-5 h-5 text-amber-600" />
               <div>
-                <p className="font-semibold text-gray-800 text-sm">
-                  {selectedMember.name}
-                </p>
+                <p className="font-semibold text-gray-800 text-sm">{selectedMember.name}</p>
                 <p className="text-xs text-gray-600">{selectedMember.phone}</p>
               </div>
             </div>
@@ -79,14 +91,10 @@ export default function MemberSearch({
             </button>
           </div>
           <div className="bg-white rounded px-2 py-1 inline-block">
-            <span className="text-xs font-medium text-amber-600">
-              {selectedMember.points} Poin
-            </span>
+            <span className="text-xs font-medium text-amber-600">{selectedMember.points} Poin</span>
           </div>
         </div>
-        <p className="text-xs text-green-600 font-medium">
-          Diskon 10% untuk member!
-        </p>
+        <p className="text-xs text-green-600 font-medium">Diskon 10% untuk member!</p>
       </div>
     );
   }
@@ -97,9 +105,7 @@ export default function MemberSearch({
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <div className="flex items-center space-x-2 mb-3">
             <UserPlus className="w-5 h-5 text-blue-600" />
-            <p className="text-sm font-medium text-gray-800">
-              Member Baru
-            </p>
+            <p className="text-sm font-medium text-gray-800">Member Baru</p>
           </div>
 
           <div className="space-y-2">
@@ -169,9 +175,7 @@ export default function MemberSearch({
           <Search className="w-4 h-4" />
         </button>
       </div>
-      <p className="text-xs text-gray-500">
-        Cari dengan nomor telepon atau daftar member baru
-      </p>
+      <p className="text-xs text-gray-500">Cari dengan nomor telepon atau daftar member baru</p>
     </div>
   );
 }

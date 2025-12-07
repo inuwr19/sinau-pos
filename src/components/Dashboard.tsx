@@ -1,19 +1,19 @@
-import { useState, useEffect } from 'react';
-import { LogOut, User, ShoppingCart } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
-import { Category, Item, Member } from '../types';
-import MenuItems from './MenuItems';
+// src/components/Dashboard.tsx
+import { LogOut, ShoppingCart, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { API_URL, fetchJson } from '../lib/api';
+import { CartItem, Category, Item, Member } from '../types';
 import Cart from './Cart';
 import MemberSearch from './MemberSearch';
+import MenuItems from './MenuItems';
 import PaymentModal from './PaymentModal';
-import { CartItem } from '../types';
 
 export default function Dashboard() {
   const { branch, signOut } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string | number>('all');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showPayment, setShowPayment] = useState(false);
@@ -25,27 +25,30 @@ export default function Dashboard() {
 
   const loadData = async () => {
     setLoading(true);
+    try {
+      const [categoriesData, itemsData] = await Promise.all([
+        fetchJson<Category[]>(`${API_URL}/categories`),
+        fetchJson<Item[]>(`${API_URL}/menu?available=true`),
+      ]);
 
-    const [categoriesRes, itemsRes] = await Promise.all([
-      supabase.from('categories').select('*').order('name'),
-      supabase.from('items').select('*').eq('is_available', true).order('name'),
-    ]);
-
-    if (categoriesRes.data) setCategories(categoriesRes.data);
-    if (itemsRes.data) setItems(itemsRes.data);
-
-    setLoading(false);
+      setCategories(categoriesData || []);
+      setItems(itemsData || []);
+    } catch (err) {
+      console.error('Load data error', err);
+      setCategories([]);
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const addToCart = (item: Item) => {
     const existingItem = cart.find((ci) => ci.item.id === item.id);
 
     if (existingItem) {
-      setCart(cart.map((ci) =>
-        ci.item.id === item.id
-          ? { ...ci, quantity: ci.quantity + 1 }
-          : ci
-      ));
+      setCart(
+        cart.map((ci) => (ci.item.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci)),
+      );
     } else {
       setCart([...cart, { item, quantity: 1, notes: '' }]);
     }
@@ -55,11 +58,11 @@ export default function Dashboard() {
     if (quantity === 0) {
       setCart(cart.filter((ci) => ci.item.id !== itemId));
     } else {
-      setCart(cart.map((ci) =>
-        ci.item.id === itemId
-          ? { ...ci, quantity, ...(notes !== undefined && { notes }) }
-          : ci
-      ));
+      setCart(
+        cart.map((ci) =>
+          ci.item.id === itemId ? { ...ci, quantity, ...(notes !== undefined && { notes }) } : ci,
+        ),
+      );
     }
   };
 
@@ -77,11 +80,12 @@ export default function Dashboard() {
     setShowPayment(true);
   };
 
-  const filteredItems = selectedCategory === 'all'
-    ? items
-    : items.filter((item) => item.category_id === selectedCategory);
+  const filteredItems =
+    selectedCategory === 'all'
+      ? items
+      : items.filter((item) => item.category_id === selectedCategory);
 
-  const cartTotal = cart.reduce((sum, ci) => sum + (ci.item.price * ci.quantity), 0);
+  const cartTotal = cart.reduce((sum, ci) => sum + ci.item.price * ci.quantity, 0);
   const discount = selectedMember ? Math.floor(cartTotal * 0.1) : 0;
   const finalTotal = cartTotal - discount;
 
@@ -89,7 +93,7 @@ export default function Dashboard() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto" />
           <p className="mt-4 text-gray-600">Memuat data...</p>
         </div>
       </div>
@@ -162,10 +166,7 @@ export default function Dashboard() {
                 <User className="w-5 h-5 text-amber-600" />
                 <h2 className="font-semibold text-gray-800">Member</h2>
               </div>
-              <MemberSearch
-                selectedMember={selectedMember}
-                onSelectMember={setSelectedMember}
-              />
+              <MemberSearch selectedMember={selectedMember} onSelectMember={setSelectedMember} />
             </div>
 
             <Cart
