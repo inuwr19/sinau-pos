@@ -8,7 +8,7 @@ interface AuthContextType {
   user: User | null;
   branch: Branch | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<User | null>;
   signOut: () => Promise<void>;
 }
 
@@ -19,13 +19,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [branch, setBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
 
+  async function removeLingeringOverlays() {
+    try {
+      // Hati-hati: remove only typical modal overlays. Adjust selector if needed.
+      const nodes = Array.from(
+        document.querySelectorAll('.fixed.inset-0, .fixed.inset-0.bg-black, .modal-overlay'),
+      );
+      nodes.forEach((n) => (n as HTMLElement).remove());
+      if (nodes.length > 0) {
+        console.debug('[Auth] removed lingering overlay elements:', nodes.length);
+      }
+    } catch (err) {
+      console.warn('[Auth] overlay cleanup failed', err);
+    }
+  }
+
   async function loadMe(token?: string | null) {
     const t = token ?? getStoredToken();
     if (!t) {
       setUser(null);
       setBranch(null);
       setLoading(false);
-      return;
+      return null;
     }
 
     try {
@@ -35,11 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(data ?? null);
       setBranch((data as any)?.branch ?? null);
+
+      // cleanup overlays (in case a modal got stuck)
+      await removeLingeringOverlays();
+
+      return data ?? null;
     } catch (err) {
       console.warn('Failed to load /me', err);
       setUser(null);
       setBranch(null);
       setStoredToken(null);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -53,24 +74,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
+  // signIn returns the loaded user (or null) so caller can route correctly
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
       const payload = { email, password };
-      const res = await fetchJson<{ user: User; token: string }>(`${API_URL}/login`, {
+      const res = await fetchJson<{ user?: User; token?: string }>(`${API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      const token = res.token ?? (res as any).access_token ?? null;
-      const userObj = res.user ?? (res as any);
-
+      const token = (res as any).token ?? (res as any).access_token ?? null;
       if (!token) throw new Error('No token received from server');
 
       setStoredToken(token);
-      setUser(userObj ?? null);
-      setBranch((userObj as any)?.branch ?? null);
+
+      // Immediately load /me with the new token so user state is set synchronously
+      const me = await loadMe(token);
+      return me;
     } finally {
       setLoading(false);
     }

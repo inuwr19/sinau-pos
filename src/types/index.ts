@@ -15,6 +15,7 @@ export interface Category {
 }
 
 export interface Item {
+  category: string;
   id: string;
   category_id: string;
   name: string;

@@ -1,10 +1,13 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/components/Login.tsx
 import { Coffee } from 'lucide-react';
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Login(): JSX.Element {
   const { signIn } = useAuth();
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState('cashier.pusat@test.com');
   const [password, setPassword] = useState('password');
@@ -15,12 +18,17 @@ export default function Login(): JSX.Element {
     e.preventDefault();
     setError('');
     setLoadingLocal(true);
-
     try {
-      await signIn(email.trim(), password);
+      const me = await signIn(email, password); // now returns user or null
+
+      if (me && (me as any).role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     } catch (err) {
       console.error(err);
-      setError((err as Error)?.message ?? 'Email atau password salah');
+      setError('Email atau password salah');
     } finally {
       setLoadingLocal(false);
     }

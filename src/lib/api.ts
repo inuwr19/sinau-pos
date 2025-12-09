@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // src/lib/api.ts
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+export const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export function getStoredToken(): string | null {
   return localStorage.getItem('api_token');
@@ -11,10 +11,6 @@ export function setStoredToken(token: string | null) {
   else localStorage.removeItem('api_token');
 }
 
-/**
- * Always returns a plain object (Record<string,string>), never undefined.
- * This avoids TS complaining when spreading into headers.
- */
 export function getAuthHeader(): Record<string, string> {
   const token = getStoredToken();
   if (!token) return {};
@@ -42,7 +38,6 @@ export async function fetchJson<T = any>(input: RequestInfo, init?: RequestInit)
   }
 
   if (!res.ok) {
-    // try to extract message from common shapes
     const message =
       (data && typeof data === 'object' && (data as any).message) ||
       (data && typeof data === 'object' && (data as any).error) ||
@@ -51,4 +46,33 @@ export async function fetchJson<T = any>(input: RequestInfo, init?: RequestInit)
   }
 
   return data as T;
+}
+
+/**
+ * POST helper untuk FormData (upload)
+ */
+export async function postForm(url: string, formData: FormData) {
+  const headers: Record<string, string> = {
+    Accept: 'application/json', // <-- PENTING supaya Laravel balas JSON, bukan redirect HTML
+    ...getAuthHeader(),
+  };
+
+  const res = await fetch(url, { method: 'POST', body: formData, headers });
+
+  const text = await res.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  if (!res.ok) {
+    const message = (data && typeof data === 'object' && (data as any).message) || res.statusText;
+    throw new Error(String(message || 'API error'));
+  }
+
+  return data;
 }
