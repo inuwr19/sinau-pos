@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/components/PaymentModal.tsx
-import { CheckCircle2, CreditCard, QrCode, Wallet, X } from 'lucide-react';
+import { Banknote, CheckCircle2, Smartphone, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { API_URL, fetchJson, getAuthHeader } from '../lib/api';
+import { API_URL, fetchJson, getAuthHeader, MIDTRANS_CLIENT_KEY } from '../lib/api';
 import type { CartItem, Member } from '../types';
 
 interface PaymentModalProps {
@@ -15,7 +16,7 @@ interface PaymentModalProps {
   onSuccess: () => void;
 }
 
-type PaymentMethod = 'cash' | 'card' | 'qris';
+type PaymentMethod = 'cash' | 'va' | 'qris';
 
 type OrderItemPayload = {
   menu_item_id: number | string;
@@ -28,7 +29,6 @@ type OrderPayload = {
   member_phone?: string | null;
   payment_method?: PaymentMethod;
   cash_received?: number | null;
-  // optional fields to help backend/debugging
   branch_id?: number | null;
   created_by?: number | null;
 };
@@ -36,9 +36,39 @@ type OrderPayload = {
 type OrderResponse = {
   id?: number;
   order_number?: string;
-  // other fields backend may return
+  snap_token?: string | null;
   [k: string]: unknown;
 };
+
+type SnapPayOptions = {
+  onSuccess?: (result: any) => void;
+  onPending?: (result: any) => void;
+  onError?: (result: any) => void;
+  onClose?: () => void;
+};
+
+declare global {
+  interface Window {
+    snap?: {
+      pay: (token: string, options?: SnapPayOptions) => void;
+    };
+  }
+}
+
+const MIDTRANS_SNAP_URL = 'https://app.sandbox.midtrans.com/snap/snap.js';
+
+async function loadMidtransSnap(clientKey: string): Promise<void> {
+  if (window.snap) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = MIDTRANS_SNAP_URL;
+    script.setAttribute('data-client-key', clientKey);
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Gagal memuat Midtrans Snap'));
+    document.body.appendChild(script);
+  });
+}
 
 export default function PaymentModal({
   cart,
@@ -73,7 +103,6 @@ export default function PaymentModal({
     setLoading(true);
 
     try {
-      // Build items payload expected by backend
       const itemsPayload: OrderItemPayload[] = cart.map((ci) => ({
         menu_item_id: ci.item.id,
         qty: ci.quantity,
@@ -83,37 +112,90 @@ export default function PaymentModal({
       const payload: OrderPayload = {
         items: itemsPayload,
         member_phone: member?.phone ?? null,
+        payment_method: paymentMethod,
+        branch_id: branch?.id ?? null,
+        created_by: user?.id ?? null,
       };
 
-      if (paymentMethod) payload.payment_method = paymentMethod;
-      if (paymentMethod === 'cash') payload.cash_received = Number(cashAmount || 0);
+      if (paymentMethod === 'cash') {
+        payload.cash_received = Number(cashAmount || 0);
+      }
 
-      // include branch/user info to avoid eslint unused and help backend if desired
-      payload.branch_id = branch?.id ?? null;
-      payload.created_by = user?.id ?? null;
-
-      // send to backend; backend will handle order creation, payment recording, and points awarding
       const order = await fetchJson<OrderResponse>(`${API_URL}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify(payload),
       });
 
-      // use order info for logging / show to user if needed
       console.log('Order created', order?.order_number ?? order?.id ?? order);
 
-      // If you integrate Midtrans: your backend should return a snap/token here.
-      // Example flow:
-      // 1) frontend requests POST /api/payments/midtrans (or your /orders returns midtrans token)
-      // 2) backend returns `snap_token` -> frontend call Midtrans Snap JS to display payment modal
-      // 3) backend receives webhook from Midtrans and updates order/payment statuses
-      //
-      // For now, we treat it as immediate success (cash/card simulated).
-      setSuccess(true);
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-      }, 1200);
+      // CASH: langsung selesai
+      if (paymentMethod === 'cash') {
+        setSuccess(true);
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+        }, 1200);
+        return;
+      }
+
+      // NON-CASH: pakai Midtrans Snap
+      const snapToken = order.snap_token;
+      if (!snapToken) {
+        throw new Error('Snap token tidak tersedia dari server');
+      }
+      if (!MIDTRANS_CLIENT_KEY) {
+        throw new Error('MIDTRANS client key belum diset di frontend (.env)');
+      }
+
+      await loadMidtransSnap(MIDTRANS_CLIENT_KEY);
+
+      window.snap?.pay(snapToken, {
+        onSuccess: async (result: any) => {
+          try {
+            await fetchJson(`${API_URL}/payments/midtrans/confirm`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              body: JSON.stringify(result),
+            });
+          } catch (e) {
+            console.error('Failed confirm payment to backend', e);
+            alert('Pembayaran berhasil di Midtrans, tetapi gagal update status di server.');
+          }
+
+          setSuccess(true);
+          setTimeout(() => {
+            onSuccess();
+            onClose();
+          }, 1200);
+        },
+        onPending: async (result: any) => {
+          console.log('Midtrans pending', result);
+          // Untuk skripsi, tetap kirim ke backend agar status minimal tersimpan
+          try {
+            await fetchJson(`${API_URL}/payments/midtrans/confirm`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              body: JSON.stringify(result),
+            });
+          } catch (e) {
+            console.error('Failed confirm pending to backend', e);
+          }
+
+          setSuccess(true);
+          setTimeout(() => {
+            onSuccess();
+            onClose();
+          }, 1200);
+        },
+        onError: (result: any) => {
+          console.error('Midtrans error', result);
+          alert('Pembayaran gagal. Silakan coba lagi.');
+        },
+        onClose: () => {
+          console.log('Midtrans popup closed');
+        },
+      });
     } catch (err) {
       console.error('Payment error:', err);
       alert((err as Error)?.message ?? 'Terjadi kesalahan saat memproses pembayaran');
@@ -123,9 +205,24 @@ export default function PaymentModal({
   };
 
   const paymentMethods = [
-    { id: 'cash' as PaymentMethod, name: 'Tunai', icon: Wallet },
-    { id: 'card' as PaymentMethod, name: 'Kartu', icon: CreditCard },
-    { id: 'qris' as PaymentMethod, name: 'QRIS', icon: QrCode },
+    {
+      id: 'cash' as PaymentMethod,
+      name: 'Tunai',
+      icon: Wallet,
+      subtitle: 'Bayar langsung dengan uang cash',
+    },
+    {
+      id: 'va' as PaymentMethod,
+      name: 'VA Bank',
+      icon: Banknote,
+      subtitle: 'Virtual Account BCA via Midtrans',
+    },
+    {
+      id: 'qris' as PaymentMethod,
+      name: 'QRIS / e-Wallet',
+      icon: Smartphone,
+      subtitle: 'QRIS, GoPay, ShopeePay, dll',
+    },
   ];
 
   if (success) {
@@ -155,6 +252,7 @@ export default function PaymentModal({
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Ringkasan total */}
           <div className="bg-gray-50 rounded-lg p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Subtotal</span>
@@ -172,40 +270,42 @@ export default function PaymentModal({
             </div>
           </div>
 
+          {/* Pilihan metode */}
           <div className="space-y-3">
             <label className="block text-sm font-medium text-gray-700">Metode Pembayaran</label>
             <div className="grid grid-cols-3 gap-3">
               {paymentMethods.map((method) => {
                 const Icon = method.icon;
+                const active = paymentMethod === method.id;
                 return (
                   <button
                     key={method.id}
                     type="button"
                     onClick={() => setPaymentMethod(method.id)}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      paymentMethod === method.id
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      active
                         ? 'border-amber-500 bg-amber-50'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     <Icon
-                      className={`w-6 h-6 mx-auto mb-2 ${
-                        paymentMethod === method.id ? 'text-amber-600' : 'text-gray-400'
-                      }`}
+                      className={`w-6 h-6 mb-2 ${active ? 'text-amber-600' : 'text-gray-400'}`}
                     />
                     <p
-                      className={`text-xs font-medium ${
-                        paymentMethod === method.id ? 'text-amber-600' : 'text-gray-600'
+                      className={`text-xs font-semibold ${
+                        active ? 'text-amber-700' : 'text-gray-700'
                       }`}
                     >
                       {method.name}
                     </p>
+                    <p className="text-[11px] text-gray-500 mt-1">{method.subtitle}</p>
                   </button>
                 );
               })}
             </div>
           </div>
 
+          {/* Detail khusus per metode */}
           {paymentMethod === 'cash' && (
             <div className="space-y-3">
               <label className="block text-sm font-medium text-gray-700">Jumlah Tunai</label>
@@ -227,12 +327,38 @@ export default function PaymentModal({
             </div>
           )}
 
-          {paymentMethod === 'qris' && (
-            <div className="bg-gray-50 rounded-lg p-6 text-center">
-              <div className="bg-white p-4 inline-block rounded-lg mb-3">
-                <QrCode className="w-32 h-32 text-gray-400" />
+          {paymentMethod === 'va' && (
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm space-y-2">
+              <p className="font-semibold text-blue-800">Virtual Account BCA</p>
+              <p className="text-blue-700">
+                Setelah klik <span className="font-semibold">Konfirmasi Pembayaran</span>, kode VA
+                BCA akan muncul di popup Midtrans. Berikan kode tersebut ke customer untuk dibayar
+                via m-Banking / ATM.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1 text-xs text-blue-800">
+                <span className="bg-white px-2 py-1 rounded border border-blue-100">BCA VA</span>
               </div>
-              <p className="text-sm text-gray-600">Scan QR code untuk membayar</p>
+            </div>
+          )}
+
+          {paymentMethod === 'qris' && (
+            <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 text-sm space-y-2">
+              <p className="font-semibold text-purple-800">QRIS / e-Wallet</p>
+              <p className="text-purple-700">
+                Setelah klik <span className="font-semibold">Konfirmasi Pembayaran</span>, popup
+                Midtrans akan menampilkan QRIS atau pilihan e-Wallet (GoPay, ShopeePay, dll) untuk
+                discan oleh customer.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1 text-xs text-purple-800">
+                <span className="bg-white px-2 py-1 rounded border border-purple-100">QRIS</span>
+                <span className="bg-white px-2 py-1 rounded border border-purple-100">GoPay</span>
+                <span className="bg-white px-2 py-1 rounded border border-purple-100">
+                  ShopeePay
+                </span>
+                <span className="bg-white px-2 py-1 rounded border border-purple-100">
+                  QRIS Lainnya
+                </span>
+              </div>
             </div>
           )}
 

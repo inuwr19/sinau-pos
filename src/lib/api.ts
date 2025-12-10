@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // src/lib/api.ts
-export const API_URL = import.meta.env.VITE_API_URL || '/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+export const MIDTRANS_CLIENT_KEY = import.meta.env.VITE_MIDTRANS_CLIENT_KEY || '';
 
 export function getStoredToken(): string | null {
   return localStorage.getItem('api_token');
@@ -17,15 +18,23 @@ export function getAuthHeader(): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
+console.log('DEBUG API_URL =', API_URL);
+
 /**
- * Generic fetch helper that:
- * - parses JSON if present
- * - throws Error on non-2xx responses
- *
- * Use like: const data = await fetchJson<MyType>('/endpoint', { method: 'GET' });
+ * Generic fetch helper
  */
 export async function fetchJson<T = any>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, { credentials: 'same-origin', ...init });
+  // pastikan selalu ada Accept: application/json
+  const headers: HeadersInit = {
+    Accept: 'application/json',
+    ...(init?.headers || {}),
+  };
+
+  const res = await fetch(input, {
+    credentials: 'same-origin',
+    ...init,
+    headers,
+  });
 
   const text = await res.text();
   let data: unknown = null;
@@ -53,7 +62,7 @@ export async function fetchJson<T = any>(input: RequestInfo, init?: RequestInit)
  */
 export async function postForm(url: string, formData: FormData) {
   const headers: Record<string, string> = {
-    Accept: 'application/json', // <-- PENTING supaya Laravel balas JSON, bukan redirect HTML
+    Accept: 'application/json',
     ...getAuthHeader(),
   };
 
