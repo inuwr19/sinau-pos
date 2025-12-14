@@ -6,6 +6,7 @@ import {
   LogOut,
   Tags,
   UserCog,
+  Users,
   UtensilsCrossed,
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
@@ -38,6 +39,11 @@ export default function AdminLayout() {
       to: '/admin/menu-items',
       label: 'Menu Items',
       icon: UtensilsCrossed,
+    },
+    {
+      to: '/admin/members', // <--- ITEM BARU
+      label: 'Members',
+      icon: Users,
     },
     {
       to: '/admin/users',
@@ -120,7 +126,6 @@ export default function AdminLayout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
-        {/* Top header (optional, bisa dipakai untuk breadcrumb / info singkat) */}
         <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-4 sm:px-6 py-3 flex items-center justify-between">
           <div>
             <h1 className="text-sm sm:text-base font-semibold text-slate-100">
@@ -135,7 +140,6 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        {/* Outlet untuk setiap halaman admin */}
         <main className="flex-1 px-4 sm:px-6 py-6 bg-slate-950">
           <div className="mx-auto max-w-6xl">
             <Outlet />

@@ -1,6 +1,6 @@
 // src/components/Dashboard.tsx
 import { LogOut, ShoppingCart, User } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { API_URL, fetchJson } from '../lib/api';
 import { CartItem, Category, Item, Member } from '../types';
@@ -19,11 +19,7 @@ export default function Dashboard() {
   const [showPayment, setShowPayment] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [categoriesData, itemsData] = await Promise.all([
@@ -40,54 +36,69 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const addToCart = (item: Item) => {
-    const existingItem = cart.find((ci) => ci.item.id === item.id);
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
-    if (existingItem) {
-      setCart(
-        cart.map((ci) => (ci.item.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci)),
-      );
-    } else {
-      setCart([...cart, { item, quantity: 1, notes: '' }]);
-    }
-  };
+  const addToCart = useCallback((item: Item) => {
+    setCart((prev) => {
+      const existingItem = prev.find((ci) => ci.item.id === item.id);
+      if (existingItem) {
+        return prev.map((ci) =>
+          ci.item.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci,
+        );
+      }
+      return [...prev, { item, quantity: 1, notes: '' }];
+    });
+  }, []);
 
-  const updateCartItem = (itemId: string, quantity: number, notes?: string) => {
+  const updateCartItem = useCallback((itemId: string, quantity: number, notes?: string) => {
     if (quantity === 0) {
-      setCart(cart.filter((ci) => ci.item.id !== itemId));
+      setCart((prev) => prev.filter((ci) => ci.item.id !== itemId));
     } else {
-      setCart(
-        cart.map((ci) =>
+      setCart((prev) =>
+        prev.map((ci) =>
           ci.item.id === itemId ? { ...ci, quantity, ...(notes !== undefined && { notes }) } : ci,
         ),
       );
     }
-  };
+  }, []);
 
-  const removeFromCart = (itemId: string) => {
-    setCart(cart.filter((ci) => ci.item.id !== itemId));
-  };
+  const removeFromCart = useCallback((itemId: string) => {
+    setCart((prev) => prev.filter((ci) => ci.item.id !== itemId));
+  }, []);
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCart([]);
     setSelectedMember(null);
-  };
+  }, []);
 
   const handleCheckout = () => {
     if (cart.length === 0) return;
     setShowPayment(true);
   };
 
-  const filteredItems =
-    selectedCategory === 'all'
-      ? items
-      : items.filter((item) => item.category_id === selectedCategory);
+  const filteredItems = useMemo(
+    () =>
+      selectedCategory === 'all'
+        ? items
+        : items.filter((item) => item.category_id === selectedCategory),
+    [items, selectedCategory],
+  );
 
-  const cartTotal = cart.reduce((sum, ci) => sum + ci.item.price * ci.quantity, 0);
-  const discount = selectedMember ? Math.floor(cartTotal * 0.1) : 0;
-  const finalTotal = cartTotal - discount;
+  const cartTotal = useMemo(
+    () => cart.reduce((sum, ci) => sum + ci.item.price * ci.quantity, 0),
+    [cart],
+  );
+
+  const discount = useMemo(
+    () => (selectedMember ? Math.floor(cartTotal * 0.1) : 0),
+    [cartTotal, selectedMember],
+  );
+
+  const finalTotal = useMemo(() => cartTotal - discount, [cartTotal, discount]);
 
   if (loading) {
     return (
@@ -166,7 +177,25 @@ export default function Dashboard() {
                 <User className="w-5 h-5 text-amber-600" />
                 <h2 className="font-semibold text-gray-800">Member</h2>
               </div>
+
               <MemberSearch selectedMember={selectedMember} onSelectMember={setSelectedMember} />
+
+              {selectedMember && (
+                <div className="mt-4 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-gray-800">{selectedMember.name}</p>
+                      <p className="text-xs text-gray-500">{selectedMember.phone}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Poin saat ini</p>
+                      <p className="text-lg font-bold text-amber-600">
+                        {selectedMember.points.toLocaleString('id-ID')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Cart

@@ -26,15 +26,15 @@ export interface Item {
   created_at: string;
 }
 
-export interface Member {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  points: number;
-  member_since: string;
-  created_at: string;
-}
+// export interface Member {
+//   id: string;
+//   name: string;
+//   phone: string;
+//   email: string;
+//   points: number;
+//   member_since: string;
+//   created_at: string;
+// }
 
 export interface Order {
   id: string;
@@ -72,4 +72,12 @@ export interface CartItem {
   item: Item;
   quantity: number;
   notes: string;
+}
+
+export interface Member {
+  id: number;
+  name: string;
+  phone: string;
+  email?: string | null;
+  points: number;
 }
