@@ -8,7 +8,8 @@ interface CartProps {
   onRemoveItem: (itemId: string) => void;
   onCheckout: () => void;
   subtotal: number;
-  discount: number;
+  memberDiscount: number;
+  redeemDiscount: number;
   total: number;
 }
 
@@ -18,7 +19,8 @@ export default function Cart({
   onRemoveItem,
   onCheckout,
   subtotal,
-  discount,
+  memberDiscount,
+  redeemDiscount,
   total,
 }: CartProps) {
   const formatPrice = (price: number) =>
@@ -27,6 +29,8 @@ export default function Cart({
       currency: 'IDR',
       minimumFractionDigits: 0,
     }).format(price);
+
+  const totalDiscount = memberDiscount + redeemDiscount;
 
   return (
     <div className="bg-white rounded-xl shadow-sm p-4">
@@ -100,12 +104,28 @@ export default function Cart({
               <span>Subtotal</span>
               <span>{formatPrice(subtotal)}</span>
             </div>
-            {discount > 0 && (
-              <div className="flex justify-between text-green-600">
-                <span>Diskon Member (10%)</span>
-                <span>-{formatPrice(discount)}</span>
+
+            {memberDiscount > 0 && (
+              <div className="flex justify-between text-emerald-600">
+                <span>Diskon Member 10%</span>
+                <span>-{formatPrice(memberDiscount)}</span>
               </div>
             )}
+
+            {redeemDiscount > 0 && (
+              <div className="flex justify-between text-blue-600">
+                <span>Diskon Tukar 100 Poin</span>
+                <span>-{formatPrice(redeemDiscount)}</span>
+              </div>
+            )}
+
+            {totalDiscount > 0 && (
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Total Diskon</span>
+                <span>-{formatPrice(totalDiscount)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-200">
               <span>Total</span>
               <span>{formatPrice(total)}</span>

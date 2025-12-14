@@ -1,179 +1,184 @@
-import { FormEvent, useEffect, useState } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// src/pages/admin/MemberForm.tsx
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { API_URL, fetchJson } from '../../lib/api';
-import { Member } from '../../types';
+import { API_URL, fetchJson, getAuthHeader } from '../../lib/api';
 
-export default function MemberForm() {
-  const { id } = useParams<{ id: string }>();
-  const isEdit = Boolean(id);
+type MemberFormData = {
+  name: string;
+  phone: string;
+  email: string;
+  points: number;
+};
+
+export default function MemberForm(): JSX.Element {
+  const { id } = useParams();
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<MemberFormData>({
     name: '',
     phone: '',
     email: '',
     points: 0,
   });
+  const [loading, setLoading] = useState(false);
 
-  const [loading, setLoading] = useState<boolean>(!!id);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const isEdit = id && id !== 'new';
 
   useEffect(() => {
-    if (!id) return;
-
-    const load = async () => {
-      setLoading(true);
-      try {
-        const member = await fetchJson<Member>(`${API_URL}/admin/members/${id}`);
-        setForm({
-          name: member.name,
-          phone: member.phone,
-          email: member.email || '',
-          points: member.points ?? 0,
-        });
-      } catch (err) {
-        console.error('Gagal memuat member', err);
-        setError('Gagal memuat data member.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void load();
+    if (isEdit) {
+      load();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: name === 'points' ? Number(value || 0) : value,
-    }));
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJson<any>(`${API_URL}/admin/members/${id}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader(),
+        },
+      });
+      setForm({
+        name: data.name ?? '',
+        phone: data.phone ?? '',
+        email: data.email ?? '',
+        points: data.points ?? 0,
+      });
+    } catch (err) {
+      alert('Gagal memuat member: ' + (err as Error).message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
-    setError(null);
-
+    setLoading(true);
     try {
-      const payload = {
-        name: form.name,
-        phone: form.phone,
-        email: form.email || null,
-        points: form.points,
-      };
-
       const url = isEdit ? `${API_URL}/admin/members/${id}` : `${API_URL}/admin/members`;
-
       const method = isEdit ? 'PUT' : 'POST';
 
-      await fetchJson<Member>(url, {
+      await fetchJson(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeader(),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(form),
       });
 
       navigate('/admin/members');
     } catch (err) {
-      console.error('Gagal menyimpan member', err);
-      setError('Gagal menyimpan data. Periksa input Anda.');
+      alert('Gagal menyimpan: ' + (err as Error).message);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <h1 className="text-xl font-semibold text-gray-800 mb-4">
-        {isEdit ? 'Edit Member' : 'Tambah Member'}
-      </h1>
+    <div className="max-w-xl">
+      <form
+        onSubmit={save}
+        className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 sm:p-6 shadow-sm"
+      >
+        <div className="mb-5">
+          <h2 className="text-xl font-semibold text-slate-100 mb-1">
+            {isEdit ? 'Edit Member' : 'Tambah Member'}
+          </h2>
+          <p className="text-xs text-slate-400">
+            Catat data pelanggan untuk program membership dan poin.
+          </p>
+        </div>
 
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        {loading ? (
-          <div className="text-gray-500">Memuat data...</div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
-                {error}
-              </div>
-            )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">Nama *</label>
+            <input
+              value={form.name}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  name: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:border-amber-500/60"
+              required
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nama</label>
-              <input
-                type="text"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                required
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">Nomor Telepon *</label>
+            <input
+              value={form.phone}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  phone: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:border-amber-500/60"
+              placeholder="08123456789"
+              required
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Nomor ini digunakan saat pencarian member di POS.
+            </p>
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Telepon</label>
-              <input
-                type="text"
-                name="phone"
-                value={form.phone}
-                onChange={handleChange}
-                required
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm"
-                placeholder="08123456789"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">Email</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  email: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:border-amber-500/60"
+            />
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email (opsional)
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={form.email}
-                onChange={handleChange}
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">Poin</label>
+            <input
+              type="number"
+              min={0}
+              value={form.points}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  points: Number(e.target.value || 0),
+                })
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:border-amber-500/60"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Admin dapat menyesuaikan poin secara manual (misalnya koreksi).
+            </p>
+          </div>
+        </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Poin</label>
-              <input
-                type="number"
-                name="points"
-                value={form.points}
-                onChange={handleChange}
-                min={0}
-                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Admin dapat mengubah poin secara manual (misalnya koreksi).
-              </p>
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-2">
-              <button
-                type="button"
-                onClick={() => navigate('/admin/members')}
-                className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-60"
-              >
-                {saving ? 'Menyimpan...' : 'Simpan'}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
+        <div className="mt-6 flex gap-2">
+          <button
+            className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-md hover:from-amber-600 hover:to-orange-700 transition-all disabled:opacity-60"
+            disabled={loading}
+          >
+            {loading ? 'Menyimpan...' : 'Simpan'}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/members')}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 transition-all"
+          >
+            Batal
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -1,19 +1,28 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // src/components/PaymentModal.tsx
-import { Banknote, CheckCircle2, Smartphone, Wallet, X } from 'lucide-react';
+import { Banknote, Smartphone, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { API_URL, fetchJson, getAuthHeader, MIDTRANS_CLIENT_KEY } from '../lib/api';
 import type { CartItem, Member } from '../types';
 
+export type OrderResponse = {
+  id?: number;
+  order_number?: string;
+  snap_token?: string | null;
+  [k: string]: unknown;
+};
+
 interface PaymentModalProps {
   cart: CartItem[];
   member: Member | null;
   subtotal: number;
-  discount: number;
+  memberDiscount: number;
+  redeemDiscount: number;
   total: number;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (order: OrderResponse, status: 'success' | 'pending') => void;
+  redeemPoints: boolean;
 }
 
 type PaymentMethod = 'cash' | 'va' | 'qris';
@@ -31,13 +40,7 @@ type OrderPayload = {
   cash_received?: number | null;
   branch_id?: number | null;
   created_by?: number | null;
-};
-
-type OrderResponse = {
-  id?: number;
-  order_number?: string;
-  snap_token?: string | null;
-  [k: string]: unknown;
+  redeem_points?: boolean | null;
 };
 
 type SnapPayOptions = {
@@ -74,8 +77,10 @@ export default function PaymentModal({
   cart,
   member,
   subtotal,
-  discount,
+  memberDiscount,
+  redeemDiscount,
   total,
+  redeemPoints,
   onClose,
   onSuccess,
 }: PaymentModalProps) {
@@ -83,7 +88,6 @@ export default function PaymentModal({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [cashAmount, setCashAmount] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
 
   const formatPrice = (price: number) =>
     new Intl.NumberFormat('id-ID', {
@@ -117,29 +121,33 @@ export default function PaymentModal({
         created_by: user?.id ?? null,
       };
 
+      if (redeemPoints && member && member.points >= 100 && redeemDiscount >= 30000) {
+        payload.redeem_points = true;
+      }
+
       if (paymentMethod === 'cash') {
         payload.cash_received = Number(cashAmount || 0);
       }
 
       const order = await fetchJson<OrderResponse>(`${API_URL}/orders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeader(),
+        },
         body: JSON.stringify(payload),
       });
 
       console.log('Order created', order?.order_number ?? order?.id ?? order);
 
-      // CASH: langsung selesai
+      // CASE 1: TUNAI – langsung sukses
       if (paymentMethod === 'cash') {
-        setSuccess(true);
-        setTimeout(() => {
-          onSuccess();
-          onClose();
-        }, 1200);
+        onSuccess(order, 'success');
+        onClose();
         return;
       }
 
-      // NON-CASH: pakai Midtrans Snap
+      // CASE 2: NON-TUNAI – Midtrans Snap
       const snapToken = order.snap_token;
       if (!snapToken) {
         throw new Error('Snap token tidak tersedia dari server');
@@ -155,7 +163,10 @@ export default function PaymentModal({
           try {
             await fetchJson(`${API_URL}/payments/midtrans/confirm`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeader(),
+              },
               body: JSON.stringify(result),
             });
           } catch (e) {
@@ -163,30 +174,26 @@ export default function PaymentModal({
             alert('Pembayaran berhasil di Midtrans, tetapi gagal update status di server.');
           }
 
-          setSuccess(true);
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-          }, 1200);
+          onSuccess(order, 'success');
+          onClose();
         },
         onPending: async (result: any) => {
           console.log('Midtrans pending', result);
-          // Untuk skripsi, tetap kirim ke backend agar status minimal tersimpan
           try {
             await fetchJson(`${API_URL}/payments/midtrans/confirm`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeader(),
+              },
               body: JSON.stringify(result),
             });
           } catch (e) {
             console.error('Failed confirm pending to backend', e);
           }
 
-          setSuccess(true);
-          setTimeout(() => {
-            onSuccess();
-            onClose();
-          }, 1200);
+          onSuccess(order, 'pending');
+          onClose();
         },
         onError: (result: any) => {
           console.error('Midtrans error', result);
@@ -225,24 +232,8 @@ export default function PaymentModal({
     },
   ];
 
-  if (success) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-green-100 rounded-full p-4">
-              <CheckCircle2 className="w-16 h-16 text-green-600" />
-            </div>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Pembayaran Berhasil!</h2>
-          <p className="text-gray-600">Terima kasih atas transaksi Anda</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-800">Konfirmasi Pembayaran</h2>
@@ -258,10 +249,16 @@ export default function PaymentModal({
               <span className="text-gray-600">Subtotal</span>
               <span className="font-medium">{formatPrice(subtotal)}</span>
             </div>
-            {discount > 0 && (
+            {memberDiscount > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-green-600">Diskon Member</span>
-                <span className="font-medium text-green-600">-{formatPrice(discount)}</span>
+                <span className="text-green-600">Diskon Member 10%</span>
+                <span className="font-medium text-green-600">-{formatPrice(memberDiscount)}</span>
+              </div>
+            )}
+            {redeemDiscount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-blue-600">Diskon Tukar 100 Poin</span>
+                <span className="font-medium text-blue-600">-{formatPrice(redeemDiscount)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold pt-2 border-t border-gray-200">
@@ -335,9 +332,6 @@ export default function PaymentModal({
                 BCA akan muncul di popup Midtrans. Berikan kode tersebut ke customer untuk dibayar
                 via m-Banking / ATM.
               </p>
-              <div className="flex flex-wrap gap-2 pt-1 text-xs text-blue-800">
-                <span className="bg-white px-2 py-1 rounded border border-blue-100">BCA VA</span>
-              </div>
             </div>
           )}
 
@@ -349,16 +343,6 @@ export default function PaymentModal({
                 Midtrans akan menampilkan QRIS atau pilihan e-Wallet (GoPay, ShopeePay, dll) untuk
                 discan oleh customer.
               </p>
-              <div className="flex flex-wrap gap-2 pt-1 text-xs text-purple-800">
-                <span className="bg-white px-2 py-1 rounded border border-purple-100">QRIS</span>
-                <span className="bg-white px-2 py-1 rounded border border-purple-100">GoPay</span>
-                <span className="bg-white px-2 py-1 rounded border border-purple-100">
-                  ShopeePay
-                </span>
-                <span className="bg-white px-2 py-1 rounded border border-purple-100">
-                  QRIS Lainnya
-                </span>
-              </div>
             </div>
           )}
 

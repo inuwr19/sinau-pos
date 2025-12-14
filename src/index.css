@@ -1,3 +1,39 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Print style khusus thermal receipt */
+@media print {
+  /* Ukuran kertas thermal 80mm, margin tipis */
+  @page {
+    size: 80mm auto;
+    margin: 3mm 3mm 5mm;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  /* SEMUA konten disembunyikan */
+  body * {
+    visibility: hidden;
+  }
+
+  /* HANYA area struk yang kelihatan */
+  #thermal-receipt,
+  #thermal-receipt * {
+    visibility: visible;
+  }
+
+  /* Posisi struk di pojok kiri atas halaman print */
+  #thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm; /* lebar thermal 80mm (ubah ke 58mm kalau perlu) */
+    max-width: 80mm;
+  }
+}
