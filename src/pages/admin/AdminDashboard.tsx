@@ -148,7 +148,7 @@ export default function AdminDashboard(): JSX.Element {
                 {today && today.orders_count > 0
                   ? `${Math.round(
                       (today.completed_orders_count / Math.max(1, today.orders_count)) * 100,
-                    )}% dari semua order`
+                    )}% dari semua order berstatus paid`
                   : 'Belum ada order'}
               </p>
             </div>
@@ -229,7 +229,7 @@ export default function AdminDashboard(): JSX.Element {
                           <span
                             className={[
                               'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border',
-                              o.status === 'completed'
+                              o.status === 'paid'
                                 ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/40'
                                 : o.status === 'pending'
                                 ? 'bg-amber-500/10 text-amber-200 border-amber-500/40'

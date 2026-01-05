@@ -93,8 +93,6 @@ export default function Login(): JSX.Element {
               {loadingLocal ? 'Memproses...' : 'Masuk'}
             </button>
           </form>
-
-          <div className="text-center text-sm text-gray-500">Masuk dengan akun cabang Anda</div>
         </div>
       </div>
     </div>
