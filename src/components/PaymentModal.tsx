@@ -279,19 +279,17 @@ export default function PaymentModal({
                     key={method.id}
                     type="button"
                     onClick={() => setPaymentMethod(method.id)}
-                    className={`p-3 rounded-lg border-2 text-left transition-all ${
-                      active
-                        ? 'border-amber-500 bg-amber-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${active
+                      ? 'border-amber-500 bg-amber-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                      }`}
                   >
                     <Icon
                       className={`w-6 h-6 mb-2 ${active ? 'text-amber-600' : 'text-gray-400'}`}
                     />
                     <p
-                      className={`text-xs font-semibold ${
-                        active ? 'text-amber-700' : 'text-gray-700'
-                      }`}
+                      className={`text-xs font-semibold ${active ? 'text-amber-700' : 'text-gray-700'
+                        }`}
                     >
                       {method.name}
                     </p>
